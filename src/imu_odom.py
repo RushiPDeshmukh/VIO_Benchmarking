@@ -2,7 +2,7 @@ import pandas as pd
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
-df = pd.read_csv("/home/jidnyesha/VIO_Benchmarking/calib_imu.csv")
+df = pd.read_csv("calib_imu_motion2.csv")
 
 acc_roll = []
 acc_pitch =[]
@@ -38,18 +38,18 @@ mag_yaw = np.array(mag_yaw)[:,None]
 plt.figure(figsize=(20,20))
 plt.subplot(1,3,1)
 plt.plot(a_t,acc_roll,label="acc_roll")
-plt.plot(g_t,gyro_roll,label="gyro_roll")
+# plt.plot(g_t,gyro_roll,label="gyro_roll")
 plt.xlabel('Time (ms)')
 plt.ylabel('Roll angle (rads)')
 plt.legend()
 plt.subplot(1,3,2)
 plt.plot(a_t,acc_pitch,label='acc_pitch')
-plt.plot(g_t,gyro_pitch,label='gyro_pitch')
+# plt.plot(g_t,gyro_pitch,label='gyro_pitch')
 plt.xlabel('Time (ms)')
 plt.ylabel('Pitch angle (rads)')
 plt.legend()
 plt.subplot(1,3,3)
-plt.plot(g_t,gyro_yaw,label='gyro_yaw')
+# plt.plot(g_t,gyro_yaw,label='gyro_yaw')
 plt.plot(m_t,mag_yaw,label='mag_yaw')
 plt.xlabel('Time (ms)')
 plt.ylabel('Yaw angle (rads)')

@@ -14,16 +14,16 @@ xlinkOut = pipeline.create(dai.node.XLinkOut)
 xlinkOut.setStreamName("imu")
 
 # enable ACCELEROMETER_RAW at 100 hz rate
-imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER_RAW, 400)
-# enable GYROSCOPE_RAW at 100 hz rate
-imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_RAW, 100)
-# enable MAGNETOMETER_RAW at 100 hz rate
-imu.enableIMUSensor(dai.IMUSensor.MAGNETOMETER_RAW, 100)
+# imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER_RAW, 400)
+# # enable GYROSCOPE_RAW at 100 hz rate
+# imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_RAW, 100)
+# # enable MAGNETOMETER_RAW at 100 hz rate
+# imu.enableIMUSensor(dai.IMUSensor.MAGNETOMETER_RAW, 100)
 
 # Enable calibrated(check) sensors
-# imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER,400)
-# imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_CALIBRATED,100)
-# imu.enableIMUSensor(dai.IMUSensor.MAGNETOMETER_CALIBRATED,100)
+imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER,500)
+imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_CALIBRATED,400)
+imu.enableIMUSensor(dai.IMUSensor.MAGNETOMETER_CALIBRATED,100)
 
 # it's recommended to set both setBatchReportThreshold and setMaxBatchReports to 20 when integrating in a pipeline with a lot of input/output connections
 # above this threshold packets will be sent in batch of X, if the host is not blocked and USB bandwidth is available
@@ -90,4 +90,4 @@ with dai.Device(pipeline) as device:
 
         if cv2.waitKey(1) == ord('q'):
             break
-    pd.DataFrame(data).to_csv('raw_imu.csv')
+    pd.DataFrame(data).to_csv('calib_imu_motion2.csv')
