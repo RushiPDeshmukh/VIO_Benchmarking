@@ -1,8 +1,51 @@
-#!/usr/bin/env python3
-import cv2
 import depthai as dai
-import pandas as pd
-# from matplotlib.pyplot import 
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+
+plt.figure(figsize=(20,20))
+ax = plt.subplot(111,projection='polar')
+ax.set_yticklabels([])
+ax.set_theta_zero_location('N')
+ax.set_theta_direction(-1)
+line, =ax.plot([],[],'ro')
+
+def update_plot(yaw_data):
+    # yaw in radians
+    # yaw_deg = np.rad2deg(yaw_data)
+    line.set_data(yaw_data,np.ones_like(yaw_data))
+    plt.draw()
+    plt.pause(0.001) # 1 ms 
+
+def calculate_yaw(mx,my,mz):
+    return np.arctan2(-mz,my)
+
+def calculate_roll_pitch(ax,ay,az):
+    roll = np.arctan2(ay,np.sqrt(ax**2+az**2))
+    pitch = np.arctan2(az,np.sqrt(ax**2+ay**2))
+    return roll,pitch
+
+def complementary_filter(ax,ay,az,gx,gy,dt,prev_roll=None,prev_pitch=None):
+    acc_roll = np.arctan2(ay,np.sqrt(ax**2+az**2))
+    acc_pitch= np.arctan2(az,np.sqrt(ax**2+ay**2))
+    if dt==0:
+        print("NO DT! ")
+        return 0,0
+    if prev_roll is None:
+        gyro_roll = gx
+    else:
+        gyro_roll=prev_roll+gx*(dt/1000)
+    if prev_pitch is None:
+        gyro_pitch = gy
+    else:
+        gyro_pitch=prev_pitch+gy*(dt/1000)
+
+    alpha=1
+    comp_roll = alpha*gyro_roll+(1-alpha)*acc_roll
+    comp_pitch = alpha*gyro_pitch + (1-alpha)*acc_pitch    
+    return comp_roll,comp_pitch
+
+
 # Create pipeline
 pipeline = dai.Pipeline()
 
@@ -35,8 +78,6 @@ imu.setMaxBatchReports(10)
 # Link plugins IMU -> XLINK
 imu.out.link(xlinkOut.input)
 
-data={'Acc_ts':[],'Acc_x':[],'Acc_y':[],'Acc_z':[],'Gyro_ts':[],'Gyro_x':[],'Gyro_y':[],'Gyro_z':[],'Mag_ts':[],'Mag_x':[],'Mag_y':[],'Mag_z':[]}
-
 # Pipeline is defined, now we can connect to the device
 with dai.Device(pipeline) as device:
 
@@ -46,7 +87,11 @@ with dai.Device(pipeline) as device:
     # Output queue for imu bulk packets
     imuQueue = device.getOutputQueue(name="imu", maxSize=50, blocking=False)
     baseTs = None
-    for i in tqdm(range(1,1000,1)):
+    plt.ion()
+    prev_roll=None
+    prev_pitch=None
+    prev_gyro_ts = 0
+    while True:
         imuData = imuQueue.get()  # blocking call, will wait until a new data has arrived
 
         imuPackets = imuData.packets
@@ -63,30 +108,18 @@ with dai.Device(pipeline) as device:
             acceleroTs = timeDeltaToMilliS(acceleroTs - baseTs)
             gyroTs = timeDeltaToMilliS(gyroTs - baseTs)
             magTs = timeDeltaToMilliS(magTs-baseTs)
-            imuF = "{:.06f}"
-            tsF  = "{:.03f}"
-            # print(f"Base Ts = {(baseTs)} ms")
-            # print(f"Accelerometer timestamp: {tsF.format(acceleroTs)} ms")
-            # print(f"Accelerometer [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")
-            # print(f"Gyroscope timestamp: {tsF.format(gyroTs)} ms")
-            # print(f"Gyroscope [rad/s]: x: {imuF.format(gyroValues.x)} y: {imuF.format(gyroValues.y)} z: {imuF.format(gyroValues.z)} ")
-            # print(f"Magnetometer timestamp: {tsF.format(magTs)} ms")
-            # print(f"Magnetometer [uT]: x: {imuF.format(magValues.x)} y: {imuF.format(magValues.y)} z: {imuF.format(magValues.z)} ")
-            # print(f"Delta : Acc & Gyro = {tsF.format(acceleroTs -gyroTs)} ms , Gyro to Mag {tsF.format(gyroTs- magTs)} ms")
-            # print("------------------------------------------------------------------------------------------------------------------------")
-            data['Acc_ts'].append(acceleroTs)
-            data['Acc_x'].append(acceleroValues.x)
-            data['Acc_y'].append(acceleroValues.y)
-            data['Acc_z'].append(acceleroValues.z)
-            data['Gyro_ts'].append(gyroTs)
-            data['Gyro_x'].append(gyroValues.x)
-            data['Gyro_y'].append(gyroValues.y)
-            data['Gyro_z'].append(gyroValues.z)
-            data['Mag_ts'].append(magTs)
-            data['Mag_x'].append(magValues.x)
-            data['Mag_y'].append(magValues.y)
-            data['Mag_z'].append(magValues.z)
 
-        if cv2.waitKey(1) == ord('q'):
-            break
-    pd.DataFrame(data).to_csv('calib_imu_motion2.csv')
+            yaw = calculate_yaw(magValues.x,magValues.y,magValues.z)
+            roll,pitch = calculate_roll_pitch(acceleroValues.x,acceleroValues.y,acceleroValues.z)
+            dt = gyroTs-prev_gyro_ts
+            comp_roll,comp_pitch = complementary_filter(acceleroValues.x,acceleroValues.y,acceleroValues.z,gyroValues.x,gyroValues.y,dt,prev_roll,prev_pitch)
+            prev_roll = comp_roll
+            prev_pitch = comp_pitch
+            prev_gyro_ts = gyroTs
+            # print(f"YAW X: {magValues.x}")
+            # print(f"YAW Y: {magValues.y}")
+            update_plot([comp_roll])
+
+    plt.ioff()
+    plt.show()
+
