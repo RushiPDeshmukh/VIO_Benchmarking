@@ -2,6 +2,7 @@
 
 import cv2
 import depthai as dai
+import numpy as np
 
 ## For depth
 # Closer-in minimum depth, disparity range is doubled (from 95 to 190):
