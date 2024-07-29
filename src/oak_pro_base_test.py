@@ -10,3 +10,4 @@ with depthai.Device(pipeline) as device:
     print('MxId:',device.getDeviceInfo().getMxId())
     print('USB speed:',device.getUsbSpeed())
     print('Connected cameras:',device.getConnectedCameras())
+    print('Connected camera features:',device.getConnectedCameraFeatures())
