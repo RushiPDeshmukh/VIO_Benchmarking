@@ -21,26 +21,29 @@ def get_data(folder_path):
 
     #loading images
     dataset_handler['images'] = []
-    for filename in tqdm(sorted(os.listdir(folder_path+'/rgb'))):
-        img = cv2.imread(os.path.join(folder_path+'/rgb',filename))
+    for filename in tqdm(sorted(os.listdir(folder_path+'/gray'))[0:10]):
+        img = cv2.imread(os.path.join(folder_path+'/gray',filename))
         if img is not None:
             img_rot = cv2.rotate(img,cv2.ROTATE_180)
-            cv2.imshow('Image',img)
-            cv2.imshow('Image_rot',img_rot)
+            # cv2.imshow('Image',img)
+            # cv2.imshow('Image_rot',img_rot)
             dataset_handler['images'].append(img)
-            cv2.waitKey(0)
+            # cv2.waitKey(0)
     #loading depth_maps
     dataset_handler['depth_maps'] = []
-    for filename in tqdm(sorted(os.listdir(folder_path+'/depth'))):
-        depth_map = cv2.imread(os.path.join(folder_path+'/depth',filename))
+    for filename in tqdm(sorted(os.listdir(folder_path+'/depth'))[0:10]):
+        depth_map = cv2.imread(os.path.join(folder_path+'/depth',filename),cv2.IMREAD_GRAYSCALE)
         
         if img is not None:
             depth_map = cv2.rotate(depth_map,cv2.ROTATE_180)
+            depth_map = depth_map/100
             dataset_handler['depth_maps'].append(depth_map)
     
 
     #k parameter
-    dataset_handler['k'] = [[2994.451171875, 0.0, 2016.2567138671875], [0.0, 2994.451171875, 1080.2032470703125], [0.0, 0.0, 1.0]]
+    dataset_handler['k'] = np.array([[3107.295654296875, 0.0, 1942.1912841796875], [0.0, 3105.113525390625, 1056.89697265625], [0.0, 0.0, 1.0]])
+    
+    # Oak D Lite : [[2994.451171875, 0.0, 2016.2567138671875], [0.0, 2994.451171875, 1080.2032470703125], [0.0, 0.0, 1.0]]
     return dataset_handler
 
 
@@ -263,16 +266,16 @@ def estimate_motion(match, kp1, kp2, k, depth1=None):
     image2_points = []
     
     objectpoints = []
-    
+    # print(np.shape(depth1))
     # Iterate through the matched features
-    for m in tqdm(match):
+    for m in match:
         # Get the pixel coordinates of features f[k - 1] and f[k]
         u1, v1 = kp1[m.queryIdx].pt
         u2, v2 = kp2[m.trainIdx].pt
         
         # Get the scale of features f[k - 1] from the depth map
         s = depth1[int(v1), int(u1)]
-        print(s)
+        # print("Scale",s)
         
         # Check for valid scale values
         if s < 1000:
@@ -283,18 +286,22 @@ def estimate_motion(match, kp1, kp2, k, depth1=None):
             image1_points.append([u1, v1])
             image2_points.append([u2, v2])
             objectpoints.append(p_c)
-        
+    
     # Convert lists to numpy arrays
     objectpoints = np.vstack(objectpoints)
     imagepoints = np.array(image2_points)
-    
+
     # Determine the camera pose from the Perspective-n-Point solution using the RANSAC scheme
-    _, rvec, tvec, _ = cv2.solvePnPRansac(objectpoints, imagepoints, k, None)
-    
-    # Convert rotation vector to rotation matrix
-    rmat, _ = cv2.Rodrigues(rvec)
-    
-    return rmat, tvec, image1_points, image2_points
+    if len(objectpoints) == len(imagepoints) and len(objectpoints)>4:
+        _, rvec, tvec, _ = cv2.solvePnPRansac(objectpoints, imagepoints, k, None)
+        
+        # Convert rotation vector to rotation matrix
+        rmat, _ = cv2.Rodrigues(rvec)
+        
+        return rmat, tvec, image1_points, image2_points
+    else:
+        print("Mismatch in points: objectpoints ",len(objectpoints)," imagepoints ",len(imagepoints))
+        return None, None, image1_points, image2_points
 
 def estimate_trajectory(estimate_motion, matches, kp_list, k, depth_maps=[]):
     """
@@ -332,30 +339,34 @@ def estimate_trajectory(estimate_motion, matches, kp_list, k, depth_maps=[]):
 
     # Initialize camera pose
     robot_pose[0] = np.eye(4)
-
     # Iterate through the matched features
     for i in range(len(matches)):
         # Estimate camera motion between a pair of images
-        rmat, tvec, image1_points, image2_points = estimate_motion(matches[i], kp_list[i], kp_list[i + 1], k, depth_maps[i])
+        if len(matches[i])==0:
+            continue
+        else:
+            rmat, tvec, image1_points, image2_points = estimate_motion(matches[i], kp_list[i], kp_list[i + 1], k, depth_maps[i])
+            if rmat is not None and tvec is not None:
+                # # Save camera movement visualization
+                # if save:
+                #     image = visualize_camera_movement(dataset_handler.images_rgb[i], image1_points, dataset_handler.images_rgb[i + 1], image2_points)
+                #     plt.imsave('{}/frame_{:02d}.jpg'.format(save, i), image)
 
-#         # Save camera movement visualization
-#         if save:
-#             image = visualize_camera_movement(dataset_handler.images_rgb[i], image1_points, dataset_handler.images_rgb[i + 1], image2_points)
-#             plt.imsave('{}/frame_{:02d}.jpg'.format(save, i), image)
+                # Determine current pose from rotation and translation matrices
+                current_pose = np.eye(4)
+                current_pose[0:3, 0:3] = rmat
+                current_pose[0:3, 3] = tvec.T
+                print(rmat,tvec)
+                # Build the robot's pose from the initial position by multiplying previous and current poses
+                robot_pose[i + 1] = robot_pose[i] @ np.linalg.inv(current_pose)
 
-        # Determine current pose from rotation and translation matrices
-        current_pose = np.eye(4)
-        current_pose[0:3, 0:3] = rmat
-        current_pose[0:3, 3] = tvec.T
+                # Calculate current camera position from origin
+                position = robot_pose[i + 1] @ np.array([0., 0., 0., 1.])
 
-        # Build the robot's pose from the initial position by multiplying previous and current poses
-        robot_pose[i + 1] = robot_pose[i] @ np.linalg.inv(current_pose)
-
-        # Calculate current camera position from origin
-        position = robot_pose[i + 1] @ np.array([0., 0., 0., 1.])
-
-        # Build trajectory
-        trajectory[:, i + 1] = position[0:3]
+                # Build trajectory
+                trajectory[:, i + 1] = position[0:3]
+            else:
+                print("No motion found between ")
 
 
     ### END CODE HERE ###
@@ -376,7 +387,7 @@ if __name__ == "__main__":
     # cv2.namedWindow("grayscale",cv2.WINDOW_NORMAL)
     # cv2.imshow("grayscale",image)
 
-    image_rgb = dataset_handler["images_rgb"][0]
+    image_rgb = dataset_handler["images"][0]
     # cv2.namedWindow("rgb",cv2.WINDOW_NORMAL)
     # cv2.imshow("rgb",image_rgb)
 
@@ -390,21 +401,24 @@ if __name__ == "__main__":
 
     images = dataset_handler["images"]
     print("Extracting Features")
-    kp_list, des_list = extract_features_dataset(images, extract_features)
-    
-    # visualize_features(images[0],kp_list[0])
+    kp_list, des_list = extract_features_dataset(images, extract_features)  
+    # visualize_features(images[3],kp_list[3])
+
     # # Part II. Feature Matching
     print("Matching features")
     matches = match_features_dataset(des_list, match_features)
-    # visualize_matches(images[0],kp_list[0],images[1],kp_list[1],matches[0])
-
+    # visualize_matches(images[3],kp_list[3],images[4],kp_list[4],matches[3])
+    print("Original matches: ",len(matches[3]))
     print("Filtering features")
     is_main_filtered_m = False
     if is_main_filtered_m:
         dist_threshold = 0.75
         filtered_matches = filter_matches_dataset(filter_matches_distance, matches, dist_threshold)
         matches = filtered_matches
-        
+    print('Matches found: ',len(matches[3]))
+    visualize_matches(images[3],kp_list[3],images[4],kp_list[4],matches[3])
+    print("Original matches: ",len(matches[3]))
+
     # Part III. Trajectory Estimation
     print("Estimating trajectory")
     depth_maps = dataset_handler['depth_maps']
